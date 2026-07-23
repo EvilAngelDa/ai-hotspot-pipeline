@@ -1,0 +1,82 @@
+# AI 热点短视频选题流水线 — 固定配置
+# 顺序不可打乱：TrendRadar → X(Grok) → cheat-on-content 筛选 → 标准化脚本
+# TRENDRADAR_ROOT 环境变量可覆盖 project_root
+
+name: ai-hotspot-pipeline
+timezone: Asia/Shanghai
+lookback_hours: 12
+schedule_local: "09:00"
+
+trendradar:
+  # 默认 ~/tools/TrendRadar；安装后按本机路径修改，或 export TRENDRADAR_ROOT=...
+  project_root: "${TRENDRADAR_ROOT:-$HOME/tools/TrendRadar}"
+  platforms:
+    - id: douyin
+      name: 抖音
+    - id: bilibili-hot-search
+      name: B站热搜
+    - id: zhihu
+      name: 知乎
+    - id: weibo
+      name: 微博
+    - id: toutiao
+      name: 今日头条
+    - id: baidu
+      name: 百度热搜
+  tech_rss_ids:
+    - hacker-news
+  xiaohongshu_via: web_search
+  max_items_per_platform: 80
+  trigger_crawl_before_fetch: true
+
+x_sources:
+  queries:
+    - "AI OR LLM OR GPT OR Claude OR Gemini OR OpenAI filter:has_engagement"
+    - "\"AI tool\" OR \"open source AI\" OR Cursor OR Claude Code OR Grok"
+    - "DeepSeek OR Qwen OR 通义 OR 智谱 OR Kimi OR 月之暗面"
+  limit_per_query: 10
+  mode: Latest
+  min_faves: 20
+
+scoring:
+  rubric: opinion-video-zero
+  windows_hours: [6, 24]
+  reject_if:
+    heat_declining: true
+    pure_industry_news: true
+    high_homogenization: true
+  keep_if:
+    min_viral_prob_24h: 0.35
+    min_short_video_score: 6.0
+    min_actionable: true
+  top_n_keep: 8
+
+content_package_fields:
+  - 选题标题
+  - 爆款封面标题
+  - 口播开场钩子
+  - 分步骤实操拍摄流程
+  - 推荐视频时长
+  - 拍摄画面参考
+  - 爆火概率_6h
+  - 爆火概率_24h
+  - 流量红利剩余时长
+  - 同行内卷竞争度
+  - 来源平台
+  - 原始关键词
+
+retention:
+  archive_dir: "data/archive"
+  master_index: "data/history/master_index.jsonl"
+  patterns_file: "data/history/patterns.md"
+  never_delete: true
+  use_history_for_scoring: true
+
+paths:
+  phase1: "data/archive/{date}/01_trendradar.json"
+  phase2: "data/archive/{date}/02_merged.json"
+  phase3: "data/archive/{date}/03_scored.json"
+  phase4: "data/archive/{date}/04_packages.json"
+  delivery_md: "output/latest/delivery.md"
+  delivery_csv: "output/latest/delivery.csv"
+  run_log: "logs/{date}.log"

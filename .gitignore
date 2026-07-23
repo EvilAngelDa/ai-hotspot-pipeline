@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+logs/
+data/archive/*/
+!data/archive/.gitkeep
+output/latest/*
+!output/latest/.gitkeep
+output/trendradar-ai/
+.DS_Store
+*.log
+.cheat-cache/

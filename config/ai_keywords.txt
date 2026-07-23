@@ -1,0 +1,70 @@
+# AI 相关匹配词（标题命中任一即纳入候选；大小写不敏感）
+# 一行一个；# 开头为注释
+
+AI
+AIGC
+大模型
+语言模型
+LLM
+GPT
+ChatGPT
+Claude
+Gemini
+Grok
+OpenAI
+Anthropic
+DeepSeek
+通义
+Qwen
+智谱
+GLM
+Kimi
+月之暗面
+豆包
+文心
+混元
+Sora
+Midjourney
+Stable Diffusion
+Copilot
+Cursor
+Agent
+智能体
+具身智能
+人形机器人
+多模态
+生成式
+推理模型
+开源模型
+微调
+RAG
+向量
+Prompt
+提示词
+AI工具
+AI 工具
+AI视频
+AI 视频
+AI绘画
+AI 绘画
+算力
+英伟达
+NVIDIA
+CUDA
+芯片
+半导体
+自动驾驶
+FSD
+机器学习
+深度学习
+神经网络
+Transformer
+Token
+上下文
+上下文窗口
+Coding Agent
+Claude Code
+Codex
+Manus
+Perplexity
+NotebookLM
