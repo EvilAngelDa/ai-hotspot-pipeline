@@ -32,21 +32,24 @@ INDUSTRY_ONLY = re.compile(
     re.I,
 )
 
-# 离普通人太远：宏大叙事硬剔
+# 离普通人太远：宏大叙事 / 纯资本 / 极客站外长帖硬剔
 TOO_FAR = re.compile(
     r"(霸权|中美AI|美中AI|美中|全球AI市场|CAGR|资本开支|capex|军备竞赛|地缘|"
     r"制裁|Kill\s*Switch|国会法案|华尔街|Nasdaq|道指|标普|期货|市值战争|"
     r"统治地位|权力斗争|超级工厂|生态共建中国行业|Harness标准|算力军备|"
-    r"芯片军备|全球超powers|AI\s*Dominance|AI\s*hegemony)",
+    r"芯片军备|全球超powers|AI\s*Dominance|AI\s*hegemony|cash burn|"
+    r"price target|stock jumps|sell off|earnings|增资\d|FSD是拉动|"
+    r"open-weight AI risks|FLOSS commons|pelicanmaxxing|tokeni[sz]ation|"
+    r"Points:\s*\d+|news\.ycombinator)",
     re.I,
 )
 
-# 日常小白加分词
+# 日常小白加分词（短英文必须 \b，避免 PS 命中 https）
 BEGINNER_BOOST = re.compile(
-    r"(小白|保姆级|手把手|一键|免费|修图|P图|调色|抠图|去水印|剪映|Photoshop|PS|"
-    r"接管|插件|办公|Excel|表格|PPT|周报|简历|翻译|配音|字幕|短视频|"
+    r"(小白|保姆级|手把手|一键|免费|修图|P图|调色|抠图|去水印|剪映|Photoshop|"
+    r"\bPS\b|接管|插件|办公|\bExcel\b|表格|\bPPT\b|周报|简历|翻译|配音|字幕|短视频|"
     r"小红书|抖音|手机|学生|打工人|副业|省时间|5分钟|3步|不会代码|"
-    r"Cursor|Codex|Claude\s*Code|ChatGPT|豆包|通义|Kimi|Gemini)",
+    r"\bCursor\b|\bCodex\b|Claude\s*Code|\bChatGPT\b|豆包|通义|\bKimi\b|\bGemini\b|\bGrok\b)",
     re.I,
 )
 
@@ -117,9 +120,9 @@ def is_beginner_friendly(title: str, text: str) -> bool:
     has_cjk = bool(re.search(r"[\u4e00-\u9fff]", title))
     has_daily_tool = bool(
         re.search(
-            r"(Photoshop|PS|剪映|Excel|PPT|Word|小红书|抖音|修图|P图|写作|周报|"
-            r"字幕|配音|办公|提示词|Prompt|Cursor|Codex|ChatGPT|Claude|豆包|通义|"
-            r"Kimi|Gemini|Grok|插件|接管|一键|小白|教程|怎么用)",
+            r"(Photoshop|\bPS\b|剪映|\bExcel\b|\bPPT\b|\bWord\b|小红书|抖音|修图|P图|写作|周报|"
+            r"字幕|配音|办公|提示词|\bPrompt\b|\bCursor\b|\bCodex\b|\bChatGPT\b|Claude|豆包|通义|"
+            r"\bKimi\b|\bGemini\b|\bGrok\b|插件|接管|一键|小白|教程|怎么用|跟做|无损|P图)",
             blob,
             re.I,
         )
