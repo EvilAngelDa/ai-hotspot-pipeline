@@ -109,13 +109,27 @@ def is_too_far(title: str, text: str) -> bool:
 
 
 def is_beginner_friendly(title: str, text: str) -> bool:
+    """普通人能跟做：日常工具/中文场景/明确教程动作。"""
     blob = f"{title} {text}"
     if is_too_far(title, text):
         return False
-    if BEGINNER_BOOST.search(blob):
+    # 纯英文宏大/极客长帖且无日常工具词 → 否
+    has_cjk = bool(re.search(r"[\u4e00-\u9fff]", title))
+    has_daily_tool = bool(
+        re.search(
+            r"(Photoshop|PS|剪映|Excel|PPT|Word|小红书|抖音|修图|P图|写作|周报|"
+            r"字幕|配音|办公|提示词|Prompt|Cursor|Codex|ChatGPT|Claude|豆包|通义|"
+            r"Kimi|Gemini|Grok|插件|接管|一键|小白|教程|怎么用)",
+            blob,
+            re.I,
+        )
+    )
+    if BEGINNER_BOOST.search(blob) and (has_cjk or has_daily_tool):
         return True
-    if ACTIONABLE.search(blob) and re.search(
-        r"(我|你|教|帮|直接|打开|软件|App|手机|电脑|插件|应用)", blob
+    if has_daily_tool and ACTIONABLE.search(blob):
+        return True
+    if has_cjk and ACTIONABLE.search(blob) and re.search(
+        r"(我|你|教|帮|直接|打开|软件|手机|电脑|插件|应用|复制|跟着)", blob
     ):
         return True
     return False
@@ -256,19 +270,20 @@ def score_item(it: dict, history: list[str]) -> dict:
     reject_reasons = []
     if too_far:
         reject_reasons.append("离普通人太远(宏大叙事/纯资本局)")
+    # 硬门槛：必须小白可触达（日常工具/中文可跟做场景）
+    if not beginner:
+        reject_reasons.append("非小白可触达(缺日常工具/跟做场景)")
     if heat_declining:
         reject_reasons.append("热度下行")
     if industry_only:
         reject_reasons.append("仅行业资讯无实操空间")
     if homo >= 0.67:
         reject_reasons.append("同质化严重")
-    if not actionable and composite < 7.0:
+    if not actionable:
         reject_reasons.append("缺小白可跟做钩子")
-    if not beginner and not too_far and composite < 6.5:
-        reject_reasons.append("不够小白可触达")
-    if p24 < 0.28 and not beginner:
+    if p24 < 0.22 and not beginner:
         reject_reasons.append("24h爆火概率过低")
-    if composite < 5.5:
+    if composite < 5.0:
         reject_reasons.append("综合分过低")
 
     keep = len(reject_reasons) == 0
@@ -324,7 +339,14 @@ def main() -> int:
     if len(kept) < args.top_n:
         hard_ids = {x.get("id") for x in kept}
         # 软补：禁止 too_far 进池
-        pool = [x for x in scored if x.get("id") not in hard_ids and not x.get("too_far")]
+        # 软补也只从 beginner 池取，绝不回填霸权/财报/纯英文极客帖
+        pool = [
+            x
+            for x in scored
+            if x.get("id") not in hard_ids
+            and not x.get("too_far")
+            and x.get("beginner_friendly")
+        ]
         pool.sort(key=soft_fill_key, reverse=True)
         for x in pool:
             if len(kept) >= args.top_n:
