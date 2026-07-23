@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Phase 3: cheat-on-content 风格 7 维粗打分 + 爆火/红利/内卷估计 + 硬剔除。
+"""Phase 3: 粗打分 + 硬剔除。
 
-说明：
-- 这是可重复的规则化粗筛（对齐 opinion-video-zero 维度名）
-- Skill 执行时可用模型对 top 候选做二次精修，但本脚本保证无模型也能产出稳定表
+受众默认：**普通人/小白可触达**（能跟着做的工具与场景）。
+坚决压低：美中霸权、资本开支、纯财报股价等「插不上手」叙事。
 """
 from __future__ import annotations
 
@@ -18,22 +17,40 @@ from zoneinfo import ZoneInfo
 TZ = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).resolve().parents[1]
 
+# 小白可跟做 / 日常工具
 ACTIONABLE = re.compile(
-    r"(怎么|如何|教程|上手|实测|评测|对比|方法|步骤|Prompt|提示词|工具|开源|免费|替代|一键|工作流|workflow|指南|安装|配置|玩法|案例|拆解|复现)",
+    r"(怎么|如何|教程|上手|实测|评测|对比|方法|步骤|Prompt|提示词|工具|开源|免费|替代|一键|"
+    r"工作流|workflow|指南|安装|配置|玩法|案例|拆解|复现|接管|修图|抠图|去水印|剪辑|"
+    r"配音|字幕|写作|办公|Excel|PPT|Word|Photoshop|PS|剪映|小红书|抖音|插件|"
+    r"Cursor|Codex|Claude|ChatGPT|豆包|通义|Kimi|Gemini|Grok|保姆级|小白|5分钟|3步)",
     re.I,
 )
+
+# 纯行业/资本（无操作）
 INDUSTRY_ONLY = re.compile(
-    r"(融资|估值|财报|任命|裁员|股价|涨跌|监管约谈|政策解读$|获批|上市)",
+    r"(融资|估值|财报|任命|裁员|股价|涨跌|监管约谈|政策解读$|获批|上市|分析师|目标价)",
     re.I,
 )
-HYPE_OVERUSED = [
-    "颠覆",
-    "炸裂",
-    "一夜暴富",
-    "必看",
-    "史诗级",
-    "彻底改变",
-]
+
+# 离普通人太远：宏大叙事硬剔
+TOO_FAR = re.compile(
+    r"(霸权|中美AI|美中AI|美中|全球AI市场|CAGR|资本开支|capex|军备竞赛|地缘|"
+    r"制裁|Kill\s*Switch|国会法案|华尔街|Nasdaq|道指|标普|期货|市值战争|"
+    r"统治地位|权力斗争|超级工厂|生态共建中国行业|Harness标准|算力军备|"
+    r"芯片军备|全球超powers|AI\s*Dominance|AI\s*hegemony)",
+    re.I,
+)
+
+# 日常小白加分词
+BEGINNER_BOOST = re.compile(
+    r"(小白|保姆级|手把手|一键|免费|修图|P图|调色|抠图|去水印|剪映|Photoshop|PS|"
+    r"接管|插件|办公|Excel|表格|PPT|周报|简历|翻译|配音|字幕|短视频|"
+    r"小红书|抖音|手机|学生|打工人|副业|省时间|5分钟|3步|不会代码|"
+    r"Cursor|Codex|Claude\s*Code|ChatGPT|豆包|通义|Kimi|Gemini)",
+    re.I,
+)
+
+HYPE_OVERUSED = ["颠覆", "炸裂", "一夜暴富", "必看", "史诗级", "彻底改变"]
 
 
 def clamp(n, lo=0, hi=5):
@@ -60,7 +77,6 @@ def load_history_titles(master_index: Path) -> list[str]:
 
 
 def homogenization(title: str, history: list[str]) -> float:
-    """0=独特, 1=高度同质。"""
     nt = re.sub(r"\s+", "", title.lower())
     if not nt:
         return 0.5
@@ -72,11 +88,37 @@ def homogenization(title: str, history: list[str]) -> float:
         if nt in nh or nh in nt:
             hits += 1
             continue
-        # token overlap rough
-        sa, sb = set(nt[i : i + 2] for i in range(len(nt) - 1)), set(nh[i : i + 2] for i in range(len(nh) - 1))
+        sa = {nt[i : i + 2] for i in range(len(nt) - 1)}
+        sb = {nh[i : i + 2] for i in range(len(nh) - 1)}
         if sa and len(sa & sb) / len(sa | sb) >= 0.65:
             hits += 1
     return min(1.0, hits / 3.0)
+
+
+def is_too_far(title: str, text: str) -> bool:
+    blob = f"{title} {text}"
+    if TOO_FAR.search(blob):
+        return True
+    # 纯宏观财经且无工具动词
+    if INDUSTRY_ONLY.search(title) and not ACTIONABLE.search(blob):
+        return True
+    if re.search(r"(futures|earnings|price target|sell off|capex fear)", blob, re.I):
+        if not BEGINNER_BOOST.search(blob):
+            return True
+    return False
+
+
+def is_beginner_friendly(title: str, text: str) -> bool:
+    blob = f"{title} {text}"
+    if is_too_far(title, text):
+        return False
+    if BEGINNER_BOOST.search(blob):
+        return True
+    if ACTIONABLE.search(blob) and re.search(
+        r"(我|你|教|帮|直接|打开|软件|App|手机|电脑|插件|应用)", blob
+    ):
+        return True
+    return False
 
 
 def score_item(it: dict, history: list[str]) -> dict:
@@ -85,59 +127,64 @@ def score_item(it: dict, history: list[str]) -> dict:
     heat_rank = it.get("heat_rank")
     vel = float(it.get("heat_velocity") or 0)
     src = it.get("source") or ""
+    blob = f"{title} {text}"
 
-    # --- 7 dims 0-5 ---
-    # ER: emotional / curiosity
+    too_far = is_too_far(title, text)
+    beginner = is_beginner_friendly(title, text)
+
     er = 2
     if re.search(r"(震惊|离谱|不敢信|居然|竟然|疯了|崩了|封神|逆天)", title):
         er += 2
-    if re.search(r"(你|我|打工人|创业|学生|程序员|设计师)", title):
+    if re.search(r"(你|我|打工人|学生|设计师|运营|自媒体|宝妈|上班)", title):
+        er += 1
+    if beginner:
         er += 1
 
-    # HP: hook — short punchy or number/contrast
     hp = 2
-    if len(title) <= 22:
+    if len(title) <= 28:
         hp += 1
-    if re.search(r"\d+|对比|vs|VS|从.+到|别再|停止|立刻|3步|5分钟", title):
+    if re.search(r"\d+|对比|vs|VS|从.+到|别再|不要|停止|立刻|3步|5分钟|一键|直接", title):
         hp += 2
-    if title.endswith("？") or "?" in title:
+    if title.endswith("？") or "?" in title or "！" in title or "!" in title:
         hp += 1
 
-    # QL: quotable
     ql = 2
     if re.search(r"[：:].{4,}|「.+」|“.+”", title):
         ql += 1
-    if re.search(r"(本质|底层|真相|误区|正确打开方式)", title):
+    if re.search(r"(正确方式|误区|不要|才是|无损|正确打开)", title):
         ql += 2
 
-    # NA: narrativity potential for short video
     na = 2
-    if ACTIONABLE.search(title) or ACTIONABLE.search(text):
+    if ACTIONABLE.search(blob):
         na += 2
-    if re.search(r"(故事|亲历|我用|实测|一天|7天)", title):
+    if re.search(r"(故事|亲历|我用|实测|一天|7天|接管|帮我)", title):
         na += 1
 
-    # AB: audience breadth for AI short video
+    # AB：普通人广度 — 小白工具加，宏大叙事砍
     ab = 3
-    if re.search(r"(ChatGPT|Claude|DeepSeek|Cursor|Sora|AI绘画|AI视频|免费)", title, re.I):
+    if BEGINNER_BOOST.search(blob):
+        ab += 2
+    if re.search(r"(ChatGPT|Claude|Cursor|Codex|剪映|PS|Photoshop|豆包|免费)", title, re.I):
         ab += 1
-    if re.search(r"(CUDA|kernel|RLHF|MoE|量化训练|论文)", title, re.I):
-        ab -= 2  # too niche for mass short video
+    if too_far:
+        ab -= 3
+    if re.search(r"(CUDA|kernel|RLHF|MoE|量化训练|论文|Harness|超级工厂)", title, re.I):
+        ab -= 2
 
-    # SR: social resonance / trend alignment
     sr = 2
     if heat_rank is not None and int(heat_rank) <= 10:
-        sr += 2
+        sr += 1  # 名次权重下调，避免纯热搜宏观占坑
     elif heat_rank is not None and int(heat_rank) <= 30:
         sr += 1
-    if "x:" in src or "twitter" in src or src.startswith("x"):
-        sr += 1  # emerging global signal
+    if beginner:
+        sr += 1
     if vel > 0.3:
         sr += 1
+    if too_far:
+        sr -= 2
 
-    # SAT: novelty / twist (not pure satire for AI tools)
     sat = 2
-    if re.search(r"(替代|终结|杀死|再见|打脸|反向|冷门)", title):
+    if re.search(r"(替代|终结|不要把|才是|反向|冷门|无损)", title):
         sat += 2
     if any(h in title for h in HYPE_OVERUSED):
         sat -= 1
@@ -151,54 +198,64 @@ def score_item(it: dict, history: list[str]) -> dict:
         "SR": clamp(sr),
         "SAT": clamp(sat),
     }
-    composite = round(sum(dims.values()) / 7 * 2.0, 2)  # 0-10
+    composite = round(sum(dims.values()) / 7 * 2.0, 2)
+    if beginner:
+        composite = round(min(10.0, composite + 0.8), 2)
+    if too_far:
+        composite = round(max(0.0, composite - 2.5), 2)
 
-    # actionable / industry filter flags
-    actionable = bool(ACTIONABLE.search(title) or ACTIONABLE.search(text))
+    actionable = bool(ACTIONABLE.search(blob)) or beginner
     industry_only = bool(INDUSTRY_ONLY.search(title)) and not actionable
     homo = homogenization(title, history)
-
-    # heat declining: negative velocity with mid/low rank
     heat_declining = vel < -0.15 or (heat_rank is not None and int(heat_rank) > 40 and vel <= 0)
 
-    # viral probs (heuristic calibrated for short-video AI niche)
     base = composite / 10.0
     rank_boost = 0.0
     if heat_rank is not None:
-        rank_boost = max(0.0, (30 - int(heat_rank)) / 30.0) * 0.25
+        rank_boost = max(0.0, (30 - int(heat_rank)) / 30.0) * 0.15  # 弱化纯榜单
     vel_boost = max(-0.15, min(0.2, vel * 0.3))
-    action_boost = 0.12 if actionable else -0.18
+    action_boost = 0.18 if actionable else -0.2
+    beginner_boost = 0.15 if beginner else -0.12
+    far_pen = -0.35 if too_far else 0.0
     homo_pen = -0.25 * homo
-    p24 = max(0.02, min(0.95, base * 0.55 + rank_boost + vel_boost + action_boost + homo_pen + 0.1))
+    p24 = max(
+        0.02,
+        min(
+            0.95,
+            base * 0.5
+            + rank_boost
+            + vel_boost
+            + action_boost
+            + beginner_boost
+            + far_pen
+            + homo_pen
+            + 0.12,
+        ),
+    )
     p6 = max(0.01, min(0.9, p24 * (0.55 + max(0, vel) * 0.4)))
 
-    # remaining traffic window (hours)
-    if heat_rank is not None and int(heat_rank) <= 5 and vel >= 0:
-        remain = 6
-    elif heat_rank is not None and int(heat_rank) <= 15 and vel >= 0:
-        remain = 12
-    elif vel > 0.2:
-        remain = 18
+    if heat_rank is not None and int(heat_rank) <= 5 and vel >= 0 and beginner:
+        remain = 10
+    elif beginner:
+        remain = 14
     elif heat_declining:
         remain = 3
     else:
         remain = 10
-    if "x:" in src or src.startswith("x") or "twitter" in src:
-        remain = max(remain, 14)  # emerging global topics last longer cross-platform
 
-    # competition 0-10
     competition = 4.0
     if heat_rank is not None and int(heat_rank) <= 10:
-        competition += 3
+        competition += 2
     competition += homo * 4
     if re.search(r"(ChatGPT|DeepSeek|Sora|AI绘画)", title, re.I):
         competition += 1.5
-    if actionable and re.search(r"(冷门|小众|新功能|隐藏|少有人)", title):
+    if beginner and re.search(r"(冷门|少有人|正确方式|不要把)", title):
         competition -= 2
     competition = round(max(0.5, min(10.0, competition)), 2)
 
-    # reject rules
     reject_reasons = []
+    if too_far:
+        reject_reasons.append("离普通人太远(宏大叙事/纯资本局)")
     if heat_declining:
         reject_reasons.append("热度下行")
     if industry_only:
@@ -206,11 +263,13 @@ def score_item(it: dict, history: list[str]) -> dict:
     if homo >= 0.67:
         reject_reasons.append("同质化严重")
     if not actionable and composite < 7.0:
-        reject_reasons.append("短视频变现潜力不足(缺实操钩子)")
-    if p24 < 0.35:
+        reject_reasons.append("缺小白可跟做钩子")
+    if not beginner and not too_far and composite < 6.5:
+        reject_reasons.append("不够小白可触达")
+    if p24 < 0.28 and not beginner:
         reject_reasons.append("24h爆火概率过低")
-    if composite < 6.0:
-        reject_reasons.append("综合分<6")
+    if composite < 5.5:
+        reject_reasons.append("综合分过低")
 
     keep = len(reject_reasons) == 0
 
@@ -223,20 +282,33 @@ def score_item(it: dict, history: list[str]) -> dict:
         "traffic_window_hours": remain,
         "competition_score": competition,
         "actionable": actionable,
+        "beginner_friendly": beginner,
+        "too_far": too_far,
         "homogenization": round(homo, 3),
         "heat_declining": heat_declining,
         "industry_only": industry_only,
         "keep": keep,
         "reject_reasons": reject_reasons,
-        "scored_under_rubric_version": "opinion-video-zero+ai-shortvideo-v1",
+        "scored_under_rubric_version": "beginner-everyday-v1",
     }
+
+
+def soft_fill_key(x: dict) -> tuple:
+    """软补齐时优先小白可触达，绝不优先宏大叙事。"""
+    return (
+        0 if x.get("too_far") else 1,
+        1 if x.get("beginner_friendly") else 0,
+        1 if x.get("actionable") else 0,
+        x.get("viral_prob_24h") or 0,
+        x.get("composite_score") or 0,
+    )
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--merged", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--top-n", type=int, default=20, help="最终总结条数上限，默认 20")
+    ap.add_argument("--top-n", type=int, default=20)
     ap.add_argument("--master-index", default=str(ROOT / "data/history/master_index.jsonl"))
     args = ap.parse_args()
 
@@ -245,18 +317,15 @@ def main() -> int:
     history = load_history_titles(Path(args.master_index))
 
     scored = [score_item(it, history) for it in items]
-    hard_kept = [x for x in scored if x["keep"]]
-    hard_kept.sort(key=lambda x: (x["viral_prob_24h"], x["composite_score"]), reverse=True)
+    hard_kept = [x for x in scored if x["keep"] and not x.get("too_far")]
+    hard_kept.sort(key=soft_fill_key, reverse=True)
 
-    # 硬筛通过优先；不足 top_n 时用高分候选软补齐（标记 soft_fill），保证总结条数
     kept = list(hard_kept[: args.top_n])
     if len(kept) < args.top_n:
         hard_ids = {x.get("id") for x in kept}
-        pool = [x for x in scored if x.get("id") not in hard_ids]
-        pool.sort(
-            key=lambda x: (x.get("viral_prob_24h") or 0, x.get("composite_score") or 0),
-            reverse=True,
-        )
+        # 软补：禁止 too_far 进池
+        pool = [x for x in scored if x.get("id") not in hard_ids and not x.get("too_far")]
+        pool.sort(key=soft_fill_key, reverse=True)
         for x in pool:
             if len(kept) >= args.top_n:
                 break
@@ -264,8 +333,8 @@ def main() -> int:
             y["keep"] = True
             y["soft_fill"] = True
             reasons = list(y.get("reject_reasons") or [])
-            if "软补齐进总结(未过硬筛)" not in reasons:
-                reasons.append("软补齐进总结(未过硬筛)")
+            if "软补齐进总结(小白优先池)" not in reasons:
+                reasons.append("软补齐进总结(小白优先池)")
             y["reject_reasons"] = reasons
             kept.append(y)
 
@@ -277,11 +346,14 @@ def main() -> int:
     out = {
         "phase": 3,
         "generated_at": now.isoformat(),
+        "audience": "beginner_everyday",
         "counts": {
             "input": len(items),
             "kept": len(kept),
             "hard_kept": len(hard_kept),
             "soft_fill": sum(1 for x in kept if x.get("soft_fill")),
+            "too_far_rejected": sum(1 for x in scored if x.get("too_far")),
+            "beginner_in_kept": sum(1 for x in kept if x.get("beginner_friendly")),
             "rejected": len(rejected),
             "top_n": args.top_n,
         },
@@ -292,7 +364,10 @@ def main() -> int:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[score] in={len(items)} kept={len(kept)} rejected={len(rejected)} → {out_path}")
+    print(
+        f"[score] audience=beginner_everyday in={len(items)} kept={len(kept)} "
+        f"beginner={out['counts']['beginner_in_kept']} too_far={out['counts']['too_far_rejected']} → {out_path}"
+    )
     return 0
 
 

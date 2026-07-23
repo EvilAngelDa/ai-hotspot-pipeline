@@ -31,17 +31,29 @@ def _has(text: str, *kws: str) -> bool:
 
 def extract_entities(title: str, snapshot: str = "") -> list[str]:
     text = f"{title} {snapshot or ''}"
+    # Prefer multi-token product names first
+    multi = re.findall(
+        r"Kimi\s*K\d+|DeepSeek|GPT-?[\d\.]+|Claude\s*Opus\s*\d*|OpenAI|Gemini|ChatGPT|Hugging\s*Face|"
+        r"OpenClaw|Harness|Agent|MCP|Qwen[\d\.]*|Claude\s*Code|Cursor|Sora|"
+        r"小红书|点点|剪映|脸萌|华为|昇腾",
+        text,
+        re.I,
+    )
     # English products / codes
     eng = re.findall(r"\b[A-Za-z][A-Za-z0-9][\w\.\-\+]{1,28}\b", text)
     # Chinese chunks
     zh = re.findall(r"[\u4e00-\u9fff]{2,10}", text)
-    nums = re.findall(r"\d+(?:\.\d+)?%?|\d+x|\d+倍|\d+亿|\d+万", text, re.I)
+    # Prefer percents / multi-digit meaningful numbers; skip bare 1-digit
+    nums = re.findall(r"\d+(?:\.\d+)?%|\d{2,}x|\d+倍|\d+亿|\d+万|\$\d+|\d{2,}", text, re.I)
     out: list[str] = []
-    for e in nums + eng + zh:
-        if e.lower() in STOP or e in STOP:
+    for e in multi + nums + eng + zh:
+        e2 = re.sub(r"\s+", " ", e).strip()
+        if not e2 or e2.lower() in STOP or e2 in STOP:
             continue
-        if e not in out:
-            out.append(e)
+        if len(e2) == 1 and e2.isdigit():
+            continue
+        if e2 not in out:
+            out.append(e2)
     return out[:12]
 
 
@@ -122,6 +134,28 @@ def _special_routes(title: str, snapshot: str) -> dict[str, Any] | None:
             ["红蓝分栏", "事件时间线", "合规小字"],
         )
 
+    # Codex/Agent 接管 PS / 设计软件 —— 用户明确偏好的小白向
+    if _has(t, "Codex", "Cursor", "Claude") and _has(
+        t, "Photoshop", "PS", "修图", "P图", "调色", "接管", "剪映", "Figma"
+    ):
+        tool = "Codex" if _has(t, "Codex") else ("Cursor" if _has(t, "Cursor") else "Claude")
+        app = "Photoshop" if _has(t, "Photoshop", "PS", "修图", "P图", "调色") else "设计软件"
+        return _pack(
+            f"{tool}接管{app[:2]}这样用",
+            f"别再把原图丢给 AI 来回传——正确打开方式是让 {tool} 直接操作 {app} 做无损修图/调色。"
+            f"我按「连接→下指令→验收」三步，普通人电脑上就能跟。",
+            [
+                f"镜头1（0-3s）：错误示范「上传图片到对话框」打红叉 + 正确「接管{app}」打绿勾",
+                f"镜头2（3-20s）：环境：本机已装 {app}，{tool}/Agent 具备电脑操作权限（打码密钥）",
+                f"镜头3（20-50s）：一句人话指令：修图目标（曝光/去瑕疵/调色风格）",
+                f"镜头4（50-80s）：录屏看 {tool} 点选菜单/图层，强调「图没离开你电脑」",
+                "镜头5（80-100s）：前后对比 + 常见翻车（破解版软件/权限不够）",
+                "镜头6（100-end）：复制口令模板卡：你只要改「风格/强度」两个词",
+            ],
+            "70-100秒",
+            ["错误vs正确分屏", f"{app}界面打码个人信息", "前后对比滑杆"],
+        )
+
     if _has(t, "KAT-Coder", "开权") and _has(t, "Coder", "Qwen", "35B", "Apache"):
         return _pack(
             "开源Coder：跟我跑通",
@@ -168,6 +202,22 @@ def _special_routes(title: str, snapshot: str) -> dict[str, Any] | None:
             ],
             "60-90秒",
             ["三勾动效", "金句截图条"],
+        )
+
+    if _has(t, "Kimi K3", "KimiK3", "K3") and _has(t, "DeepSeek", "本地", "华为", "霸权", "冲击"):
+        return _pack(
+            "Kimi K3：本地冲击拆解",
+            "外媒把 Kimi K3 说成比 DeepSeek 更大的波——重点不是吓你换模型，是三层变化：成本、能力、可私有化本地下载托管（含国产芯片叙事）。创作者怎么讲才不跟风。",
+            [
+                "镜头1（0-3s）：字幕「Kimi K3 vs DeepSeek」+ 双冲击图标",
+                "镜头2（3-20s）：DeepSeek 当年是成本冲击；K3 被描述为成本+能力",
+                "镜头3（20-45s）：「可下载托管」对数据不出域意味着什么（企业/创作者）",
+                "镜头4（45-70s）：芯片叙事：华为/国产算力说法如何影响内容角度（标注待核实）",
+                "镜头5（70-90s）：拍法：对比表三栏——价格感、是否可本地、适用场景",
+                "镜头6（90-end）：行动：先列你的数据是否必须本地，再决定要不要追新模型",
+            ],
+            "70-100秒",
+            ["对比三栏表", "本地/云图标", "待核实水印"],
         )
 
     if _has(t, "小红书") and _has(t, "起号", "爆款标题"):
