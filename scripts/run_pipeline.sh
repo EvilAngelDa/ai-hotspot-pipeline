@@ -53,10 +53,12 @@ echo "[3/5] Score + filter (cheat-on-content style)"
 "$PY" "$ROOT/scripts/score_filter.py" \
   --merged "$ARCH/02_merged.json" \
   --out "$ARCH/03_scored.json" \
-  --top-n 8 \
+  --top-n 20 \
   --master-index "$ROOT/data/history/master_index.jsonl"
 
-echo "[4/5] Build content packages + delivery tables"
+echo "[4/5] Build content packages (per-topic hooks/shots via content_plan; uniqueness hard-fail)"
+# build_packages 内部：analyze_topic(title+snapshot) → ensure_batch_unique → validate_unique
+# 校验失败会 exit 2，禁止带着套话交付
 "$PY" "$ROOT/scripts/build_packages.py" \
   --scored "$ARCH/03_scored.json" \
   --out-json "$ARCH/04_packages.json" \
@@ -64,7 +66,6 @@ echo "[4/5] Build content packages + delivery tables"
   --out-csv "$ROOT/output/latest/delivery.csv" \
   --master-index "$ROOT/data/history/master_index.jsonl"
 
-# 同步一份带时间戳的 latest
 cp -f "$ROOT/output/latest/delivery.md" "$ARCH/04_delivery.md"
 cp -f "$ROOT/output/latest/delivery.csv" "$ARCH/04_delivery.csv"
 
@@ -103,5 +104,14 @@ else
   echo "[info] skip grok enrich (SKIP_GROK=$SKIP_GROK or grok missing)"
 fi
 
+echo "[6/6] Publish unified HTML hub (list + report + summary + downloads)"
+"$PY" "$ROOT/scripts/publish_hub.py" \
+  --trend-html-root "${TRENDRADAR_ROOT:-$HOME/tools/TrendRadar}/output/html" \
+  --packages "$ARCH/04_packages.json" \
+  --delivery-md "$ROOT/output/latest/delivery.md" \
+  --delivery-csv "$ROOT/output/latest/delivery.csv" \
+  || echo "[warn] hub publish failed"
+
 echo "DONE → $ROOT/output/latest/delivery.md"
 echo "ARCHIVE → $ARCH"
+echo "HUB    → $ROOT/output/hub/index.html"

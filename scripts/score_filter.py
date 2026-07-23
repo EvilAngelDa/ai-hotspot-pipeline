@@ -236,7 +236,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--merged", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--top-n", type=int, default=8)
+    ap.add_argument("--top-n", type=int, default=20, help="最终总结条数上限，默认 20")
     ap.add_argument("--master-index", default=str(ROOT / "data/history/master_index.jsonl"))
     args = ap.parse_args()
 
@@ -245,11 +245,33 @@ def main() -> int:
     history = load_history_titles(Path(args.master_index))
 
     scored = [score_item(it, history) for it in items]
-    kept = [x for x in scored if x["keep"]]
-    kept.sort(key=lambda x: (x["viral_prob_24h"], x["composite_score"]), reverse=True)
-    kept = kept[: args.top_n]
-    rejected = [x for x in scored if not x["keep"]]
-    rejected.sort(key=lambda x: x["composite_score"], reverse=True)
+    hard_kept = [x for x in scored if x["keep"]]
+    hard_kept.sort(key=lambda x: (x["viral_prob_24h"], x["composite_score"]), reverse=True)
+
+    # 硬筛通过优先；不足 top_n 时用高分候选软补齐（标记 soft_fill），保证总结条数
+    kept = list(hard_kept[: args.top_n])
+    if len(kept) < args.top_n:
+        hard_ids = {x.get("id") for x in kept}
+        pool = [x for x in scored if x.get("id") not in hard_ids]
+        pool.sort(
+            key=lambda x: (x.get("viral_prob_24h") or 0, x.get("composite_score") or 0),
+            reverse=True,
+        )
+        for x in pool:
+            if len(kept) >= args.top_n:
+                break
+            y = dict(x)
+            y["keep"] = True
+            y["soft_fill"] = True
+            reasons = list(y.get("reject_reasons") or [])
+            if "软补齐进总结(未过硬筛)" not in reasons:
+                reasons.append("软补齐进总结(未过硬筛)")
+            y["reject_reasons"] = reasons
+            kept.append(y)
+
+    kept_ids = {x.get("id") for x in kept}
+    rejected = [x for x in scored if x.get("id") not in kept_ids]
+    rejected.sort(key=lambda x: x.get("composite_score") or 0, reverse=True)
 
     now = datetime.now(TZ)
     out = {
@@ -258,10 +280,13 @@ def main() -> int:
         "counts": {
             "input": len(items),
             "kept": len(kept),
+            "hard_kept": len(hard_kept),
+            "soft_fill": sum(1 for x in kept if x.get("soft_fill")),
             "rejected": len(rejected),
+            "top_n": args.top_n,
         },
         "kept": kept,
-        "rejected": rejected[:50],  # cap for readability
+        "rejected": rejected[:80],
         "all_scored": scored,
     }
     out_path = Path(args.out)

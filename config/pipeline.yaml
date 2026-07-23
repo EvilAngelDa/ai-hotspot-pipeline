@@ -1,15 +1,15 @@
 # AI 热点短视频选题流水线 — 固定配置
 # 顺序不可打乱：TrendRadar → X(Grok) → cheat-on-content 筛选 → 标准化脚本
-# TRENDRADAR_ROOT 环境变量可覆盖 project_root
 
 name: ai-hotspot-pipeline
 timezone: Asia/Shanghai
 lookback_hours: 12
 schedule_local: "09:00"
 
+# Phase 1 — TrendRadar 目标源
 trendradar:
-  # 默认 ~/tools/TrendRadar；安装后按本机路径修改，或 export TRENDRADAR_ROOT=...
-  project_root: "${TRENDRADAR_ROOT:-$HOME/tools/TrendRadar}"
+  project_root: "/Users/qwe/tools/TrendRadar"
+  # 热榜平台（id 对齐 config.yaml）
   platforms:
     - id: douyin
       name: 抖音
@@ -23,12 +23,15 @@ trendradar:
       name: 今日头条
     - id: baidu
       name: 百度热搜
+  # 科技资讯：走 RSS + 综合热榜
   tech_rss_ids:
     - hacker-news
+  # 小红书：TrendRadar 无官方源，Phase1.5 用 web 补充
   xiaohongshu_via: web_search
   max_items_per_platform: 80
   trigger_crawl_before_fetch: true
 
+# Phase 2 — X / Twitter（Grok 原生工具）
 x_sources:
   queries:
     - "AI OR LLM OR GPT OR Claude OR Gemini OR OpenAI filter:has_engagement"
@@ -38,19 +41,23 @@ x_sources:
   mode: Latest
   min_faves: 20
 
+# Phase 3 — cheat-on-content 风格筛选
 scoring:
-  rubric: opinion-video-zero
+  rubric: opinion-video-zero   # 7 维：ER HP QL NA AB SR SAT
+  # 爆火概率窗口
   windows_hours: [6, 24]
+  # 硬剔除
   reject_if:
-    heat_declining: true
-    pure_industry_news: true
-    high_homogenization: true
+    heat_declining: true          # 热度下行
+    pure_industry_news: true      # 仅行业资讯、无可操作空间
+    high_homogenization: true     # 同质化严重（标题近重复 / 同角度已爆过）
   keep_if:
-    min_viral_prob_24h: 0.35
-    min_short_video_score: 6.0
-    min_actionable: true
-  top_n_keep: 8
+    min_viral_prob_24h: 0.35      # 24h 爆火概率下限
+    min_short_video_score: 6.0    # 短视频变现潜力综合分 0-10
+    min_actionable: true          # 必须有实操/演示空间
+  top_n_keep: 20                  # 最终保留选题上限（总结默认 20 条）
 
+# Phase 4 — 标准化内容产出字段（固定）
 content_package_fields:
   - 选题标题
   - 爆款封面标题
@@ -65,8 +72,9 @@ content_package_fields:
   - 来源平台
   - 原始关键词
 
+# 留存：永不清空
 retention:
-  archive_dir: "data/archive"
+  archive_dir: "data/archive"           # 按日目录
   master_index: "data/history/master_index.jsonl"
   patterns_file: "data/history/patterns.md"
   never_delete: true

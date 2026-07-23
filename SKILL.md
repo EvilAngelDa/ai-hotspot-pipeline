@@ -149,25 +149,37 @@ python3 scripts/merge_dedupe.py \
 python3 scripts/score_filter.py \
   --merged data/archive/YYYY-MM-DD/02_merged.json \
   --out data/archive/YYYY-MM-DD/03_scored.json \
-  --top-n 8
+  --top-n 20
 ```
 
 模型可对 `kept` 做二次精修分数，但**不得**把已 reject 且无新证据的条目强行捞回。  
-只保留有**短视频变现潜力**的选题（实操/演示/可跟做）。
+只保留有**短视频变现潜力**的选题（实操/演示/可跟做）。默认总结 **20** 条。
 
 ---
 
-## Phase ④ — 标准化内容包
+## Phase ④ — 标准化内容包（硬规则：按条内容生成）
+
+### 不可妥协
+
+1. **每条选题独立生成**「口播开场钩子」「分步骤实操拍摄流程」「封面标题」「画面参考」  
+2. 输入必须是该条的 `title + snapshot_text + source`，**禁止**全站同一模板  
+3. **禁止套话**示例（出现即失败）：  
+   `停一下——{标题}，我花了半小时实测，结论和热搜完全不是一回事…`  
+   `镜头1：封面同款大字 + 结果画面闪现`（若每条都一样）  
+4. 同批次内：钩子全文唯一、分镜全序列唯一；由 `scripts/content_plan.py` 的 `ensure_batch_unique` + `validate_unique` 强制；**校验失败则流水线中止**  
+5. 实现入口（每次生成必跑，不要跳过）：  
+   `scripts/build_packages.py` → 内部调用 `content_plan.analyze_topic`  
+6. Agent 若人工改写，也必须**逐条**根据该热点实质改，不得复制粘贴到其它条
 
 对每条 `kept` 必须产出以下字段（缺一不可）：
 
 | 字段 | 说明 |
 |---|---|
-| 爆款短视频封面标题 | ≤18 字，可加数字/反差 |
-| 口播开场钩子 | 前 3 秒可播，含冲突或承诺 |
-| 分步骤实操拍摄流程 | 分镜列表，含秒数区间 |
+| 爆款短视频封面标题 | ≤18 字，含本条实体/数字/冲突 |
+| 口播开场钩子 | 前 3 秒可播；必须点名本条核心实体或冲突 |
+| 分步骤实操拍摄流程 | 分镜列表含秒数；镜头内容绑定本条主题 |
 | 推荐视频时长 | 如 60-90秒 |
-| 拍摄画面参考 | 构图/字幕/录屏要点 |
+| 拍摄画面参考 | 与本条题材匹配的构图/录屏要点 |
 
 ```bash
 python3 scripts/build_packages.py \
@@ -175,9 +187,10 @@ python3 scripts/build_packages.py \
   --out-json data/archive/YYYY-MM-DD/04_packages.json \
   --out-md output/latest/delivery.md \
   --out-csv output/latest/delivery.csv
+# 内部：content_plan.analyze_topic → ensure_batch_unique → validate_unique（失败 exit 2）
 ```
 
-Skill 应用模型精修封面/钩子/分镜文案，**保持表格结构**，写回 `output/latest/delivery.md` 与归档副本。
+然后 `publish_hub.py` 写入统一预览中心。
 
 ---
 
@@ -268,6 +281,7 @@ wc -l output/latest/delivery.md
 - 「清空历史重新开始」→ 拒绝（可新建分支副本，默认库不删）
 - 「只给灵感不要表格」→ 拒绝；最终必须是表
 - 「把已剔除的资讯硬塞进交付」→ 拒绝，除非用户显式 override 并记入 note
+- 「钩子/分镜用同一模板批量填」→ **拒绝**；必须按条内容生成并过唯一性校验
 
 ---
 
