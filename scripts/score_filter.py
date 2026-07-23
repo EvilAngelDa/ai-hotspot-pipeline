@@ -283,8 +283,9 @@ def score_item(it: dict, history: list[str]) -> dict:
         reject_reasons.append("热度下行")
     if industry_only:
         reject_reasons.append("仅行业资讯无实操空间")
-    # 小白池放宽同质化：历史 master_index 常含本流水线旧题，避免把好题误杀
-    if homo >= (0.92 if beginner else 0.67):
+    # 同质化：仅作降权信号；小白池不因历史 master_index 误杀
+    # （流水线会重复出现「Codex修图」类常青题，应允许再次产出）
+    if (not beginner) and homo >= 0.67:
         reject_reasons.append("同质化严重")
     if not actionable:
         reject_reasons.append("缺小白可跟做钩子")
