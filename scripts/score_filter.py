@@ -40,7 +40,8 @@ TOO_FAR = re.compile(
     r"芯片军备|全球超powers|AI\s*Dominance|AI\s*hegemony|cash burn|"
     r"price target|stock jumps|sell off|earnings|增资\d|FSD是拉动|"
     r"open-weight AI risks|FLOSS commons|pelicanmaxxing|tokeni[sz]ation|"
-    r"Points:\s*\d+|news\.ycombinator)",
+    r"Points:\s*\d+|news\.ycombinator|网格智算|林下场景|超级个体|Builder工具|"
+    r"商业智能体|行业版Harness|几何、物理AI|累计获超)",
     re.I,
 )
 
@@ -131,8 +132,10 @@ def is_beginner_friendly(title: str, text: str) -> bool:
         return True
     if has_daily_tool and ACTIONABLE.search(blob):
         return True
+    # 中文跟做语境（避免「我」误匹配「我国」）
     if has_cjk and ACTIONABLE.search(blob) and re.search(
-        r"(我|你|教|帮|直接|打开|软件|手机|电脑|插件|应用|复制|跟着)", blob
+        r"(我用|我的|教你|帮你|帮我|直接让|打开软件|手机端|电脑上|插件|复制提示词|跟着做|小白|不会代码|一键)",
+        blob,
     ):
         return True
     return False
@@ -280,7 +283,8 @@ def score_item(it: dict, history: list[str]) -> dict:
         reject_reasons.append("热度下行")
     if industry_only:
         reject_reasons.append("仅行业资讯无实操空间")
-    if homo >= 0.67:
+    # 小白池放宽同质化：历史 master_index 常含本流水线旧题，避免把好题误杀
+    if homo >= (0.92 if beginner else 0.67):
         reject_reasons.append("同质化严重")
     if not actionable:
         reject_reasons.append("缺小白可跟做钩子")
